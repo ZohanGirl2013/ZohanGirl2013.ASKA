@@ -8,13 +8,13 @@ using SSSGame;
 using System.Text;
 using static SSSGame.HarvestSpawner;
 
-namespace BetterIronMod
+namespace BetterMinesMod
 {
 // -------------------------------- BASE PLUGIN ----------------------------------------------------------------
     [BepInPlugin("zohangirl2013.aska.BetterMines", "Better Mines", "1.0.0")]
     public class Plugin : BasePlugin
     {
-        // Other classes use this logger with 'Plugin.ModLog.LogInfo("message here");'
+        // other classes use this logger with 'Plugin.ModLog.LogInfo("message here");'
         internal static ManualLogSource ModLog = null!;
 
         public override void Load()
@@ -35,7 +35,7 @@ namespace BetterIronMod
     [HarmonyPatch(typeof(ItemInfoDatabase), nameof(ItemInfoDatabase.Initialize))]
     internal static class IronDepositPatch
     {
-        // Configurable Numbers For Iron Deposit Patch
+        // configurable Numbers For Iron Deposit Patch
         private static ConfigEntry<int> ironOreMinAmount = null!;
         private static ConfigEntry<int> ironOreMaxAmount = null!;
         private static ConfigEntry<int> largeStoneMinAmount = null!;
@@ -77,12 +77,13 @@ namespace BetterIronMod
             var largeStoneItem = ironDepositItem.components[0];
             var ironOreItem = ironDepositItem.components[1];
 
-            // +1 needed, makes the configured maximum possible (ASKA excludes the upper limit).
+            // +1 needed, makes the configured maximum possible (because ASKA excludes the upper limit).
             ironOreItem.quantity = ironOreMinAmount.Value;
             ironOreItem.randomQuantity = ironOreMaxAmount.Value + 1;
             largeStoneItem.quantity = largeStoneMinAmount.Value;
             largeStoneItem.randomQuantity = largeStoneMaxAmount.Value + 1;
 
+            // -1 because so user sees original number they had in config settings
             Plugin.ModLog.LogInfo(
       $"Iron deposit drop settings applied successfully: " +
       $"Iron min.{ironOreItem.quantity}-max.{ironOreItem.randomQuantity - 1}, " +
@@ -166,11 +167,11 @@ namespace BetterIronMod
             if (inventory == null)
                 return;
 
-            var owner = inventory.Owner; // The ItemCollection owner is a Unity GameObject.
+            var owner = inventory.Owner; // find which GameObject this inventory belongs to.
             if (owner == null)
                 return;
 
-            // Use the actor's actual personal inventory, not just a matching scene parent.
+            // make sure we're using the character's actual inventory, not just a nearby object.
             var player = owner.GetComponentInParent<PlayerInteractionAgent>();
             if (player != null)
             {
@@ -215,7 +216,7 @@ namespace BetterIronMod
     [HarmonyPatch(typeof(ItemInfoDatabase), nameof(ItemInfoDatabase.Initialize))]
     internal static class CrawlerEggPatch
     {
-        // Configurable Chance Numbers
+        // configurable Chance Numbers
         private static ConfigEntry<float> crawlerSackDrop = null!; // default chance = 20%
         private static ConfigEntry<float> resinDrop = null!; // default chance = 50%
         private static ConfigEntry<float> slimeDrop = null!; // default chance = 100%
@@ -254,7 +255,7 @@ namespace BetterIronMod
                 try
                 {
                     // [0] = sack, [1] = resin, [2] = fertilizer, [3] = maggot
-                    // don't want to rely on indexing so using FirstOrDefault()
+                    // but I don't want to rely on indexing like with the iron deposit patch so using 'FirstOrDefault()'
                     crawlerEgg.components.FirstOrDefault(item => item.itemInfo.name.Contains("CrawlerSack")).chance = crawlerSackDrop.Value;
                     crawlerEgg.components.FirstOrDefault(item => item.itemInfo.name.Contains("Resin")).chance = resinDrop.Value;
                     crawlerEgg.components.FirstOrDefault(item => item.itemInfo.name.Contains("Slime")).chance = slimeDrop.Value;
@@ -294,8 +295,8 @@ namespace BetterIronMod
                     if(pieceLootTable == null || pieceLootTable.lootInfo == null)
                         continue;
 
-                    // chanceComponent NEEDS to equal false if drop is 100% (1.0), 
-                    // otherwise, it needs to be true or it will bug the drop
+                    // chanceComponent NEEDS to equal false if drop chance is 100% (1.0), otherwise it doesn't work
+                    // I originally had this section way longer(still worked) but AI suggested this way to condense
                     if (pieceLootTable.lootInfo.name == "Item_Misc_CrawlerSack")
                         pieceLootTable.chanceComponent = crawlerSackDrop.Value < 1.0f;
 
@@ -317,14 +318,13 @@ namespace BetterIronMod
     [HarmonyPatch(typeof(MineResourceConfig), "GetWallResourceComposition")]
     internal static class CaveWallPatch
     {
-        // Configurable Multipliers for Cave Wall Patch
+        // configurable Multipliers for Cave Wall Patch
         private static ConfigEntry<float> ironMultiplier = null!;
         private static ConfigEntry<float> largeStoneMultiplier = null!;
         private static ConfigEntry<float> smallStoneMultiplier = null!;
         private static bool caveWallLogged = false;
         private static bool caveWallProbeLogged = false;
 
-        // Register these settings in the existing More Iron plugin's config.
         internal static void InitializeConfig(ConfigFile config)
         {
             ironMultiplier = config.Bind(
@@ -337,6 +337,7 @@ namespace BetterIronMod
                 "Cave Wall Resource Multipliers", "SmallStoneMultiplier", 2.0f, "Multiplies small stones obtained from cave walls. 1.0 = vanilla(100%), 2.0 = double(200%), etc.");
         }
 
+        // I tried to condense this patch since it felt complicated but all suggestions(from AI) didn't work, so it remains 'ugly'
         [HarmonyPostfix]
         private static void AdjustWallResources(MineResourceConfig __instance, ItemManifest __0)
         {
@@ -363,7 +364,7 @@ namespace BetterIronMod
 
                     var resource = element.resource;
 
-                    // Identify the resource and select its corresponding multiplier.
+                    // identifies the resource and select the r ight multiplier
                     float multiplier = resource.name switch
                     {
                         "Item_Iron_Ore" => ironMultiplier.Value,
@@ -375,14 +376,14 @@ namespace BetterIronMod
                     if (multiplier <= 1.0f || float.IsNaN(multiplier) || float.IsInfinity(multiplier))
                         continue;
 
-                    // Read the amount ASKA originally calculated.
+                    // reads the amount ASKA originally calculated
                     int originalQuantity = __0.GetQuantity(resource);
 
-                    // Don't introduce resources into walls that originally contain none.
+                    // don't introduce resources into walls that originally contain none! *impportant*
                     if (originalQuantity <= 0)
                         continue;
 
-                    // Calculate the new total, rounding to a whole item.
+                    // calculates new total, rounding to a whole int
                     double calculated = originalQuantity * (double)multiplier;
 
                     int newQuantity = calculated >= int.MaxValue
@@ -393,7 +394,7 @@ namespace BetterIronMod
 
                     int additionalQuantity = newQuantity - originalQuantity;
 
-                    // Add only the difference to the original manifest.
+                    // Add only the difference to the original manifest
                     if (additionalQuantity > 0)
                     {
                         __0.AddItem(resource, additionalQuantity);
